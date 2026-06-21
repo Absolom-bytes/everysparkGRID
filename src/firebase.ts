@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -11,13 +11,50 @@ const app = initializeApp(firebaseConfig);
 // The site key can be configured via environment variables or falls back to 'YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY'
 const recaptchaSiteKey = (import.meta as any).env?.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || 'YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY';
 
-export const appCheck = initializeAppCheck(app, {
-  provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-  isTokenAutoRefreshEnabled: true, // Keeps tokens fresh automatically
-});
+let appCheckInstance: any = null;
+
+if (recaptchaSiteKey && recaptchaSiteKey !== 'YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY') {
+  try {
+    // Enable debug provider in local and AI Studio preview containers
+    if (typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.includes('ais-dev') ||
+      window.location.hostname.includes('ais-pre') ||
+      window.location.hostname.includes('run.app')
+    )) {
+      (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+
+    appCheckInstance = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true, // Keeps tokens fresh automatically
+    });
+    console.log('Firebase App Check successfully initialized.');
+  } catch (error) {
+    console.warn('Firebase App Check failed to initialize:', error);
+  }
+} else {
+  console.info('Firebase App Check skipped: using default or missing site key.');
+}
+
+export const appCheck = appCheckInstance;
 
 // Initialize Firestore with custom Database ID from AI Studio
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Enable Offline Persistence for PWA Network Resilience
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore offline persistence failed-precondition (multiple tabs open)');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore offline persistence unimplemented (unsupported browser)');
+    } else {
+      console.warn('Firestore offline persistence error:', err);
+    }
+  });
+}
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);

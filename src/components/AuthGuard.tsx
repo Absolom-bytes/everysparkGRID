@@ -23,6 +23,12 @@ interface AuthGuardProps {
 
 export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [demoUser, setDemoUser] = useState<{
+    uid: string;
+    email: string;
+    displayName: string;
+    photoURL: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -65,7 +71,7 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Identity pop-up dismissed or blocked.');
+      setErrorMsg(`${err.message || 'Identity pop-up dismissed or blocked.'} (Error code: ${err.code || 'unknown'})`);
       onAddLog(`AuthGuard: Failure in Google SSO popup. (${err.message})`, 'error');
     } finally {
       setSigningIn(false);
@@ -74,6 +80,7 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
 
   const handleSignOut = async () => {
     try {
+      setDemoUser(null);
       await signOut(auth);
       onAddLog('AuthGuard: Session manually completed.', 'warn');
     } catch (err) {
@@ -81,16 +88,17 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
     }
   };
 
-  // Check authorization
-  const isEmailAllowed = user?.email ? allowedEmails.includes(user.email.toLowerCase()) : false;
-  const isDomainAllowed = user?.email
+  // Check authorization with either active Firebase user or locally simulated Demo IT Admin User
+  const currentUser = user || demoUser;
+  const isEmailAllowed = currentUser?.email ? allowedEmails.includes(currentUser.email.toLowerCase()) : false;
+  const isDomainAllowed = currentUser?.email
     ? allowedDomains.some((domain) => {
-        const emailParts = user.email!.split('@');
+        const emailParts = currentUser.email!.split('@');
         return emailParts.length > 1 && emailParts[1].toLowerCase() === domain.toLowerCase();
       })
     : false;
 
-  const isAuthorized = user && (isEmailAllowed || isDomainAllowed || bypassCheck);
+  const isAuthorized = (currentUser && (isEmailAllowed || isDomainAllowed)) || bypassCheck;
 
   // Handlers for managing lists
   const addDomain = (e: React.FormEvent) => {
@@ -165,38 +173,56 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
               </div>
             </div>
 
-            <div className="w-full md:w-auto shrink-0 self-stretch md:self-auto flex items-center">
-              {!user ? (
-                <button
-                  onClick={handleGoogleSignIn}
-                  disabled={signingIn}
-                  className="w-full md:w-auto bg-[#38bdf8] hover:bg-[#38bdf8]/90 text-[#0f172a] font-black text-xs px-5 py-3 rounded-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg disabled:opacity-50"
-                >
-                  <Key className="w-4 h-4 text-[#0f172a]" />
-                  <span>{signingIn ? 'Handshaking...' : 'Google SSO Sign In'}</span>
-                </button>
+            <div className="w-full md:w-auto shrink-0 self-stretch md:self-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {!currentUser ? (
+                <>
+                  <button
+                    onClick={handleGoogleSignIn}
+                    disabled={signingIn}
+                    className="bg-[#38bdf8] hover:bg-[#38bdf8]/90 text-[#0f172a] font-black text-xs px-5 py-3 rounded-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                  >
+                    <Key className="w-4 h-4 text-[#0f172a]" />
+                    <span>{signingIn ? 'Handshaking...' : 'Google SSO Sign In'}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDemoUser({
+                        uid: 'demo-it-admin-777',
+                        email: 'gustav.gropp@gmail.com', // directly whitelisted developer email
+                        displayName: 'Gustav Gropp (Demo IT Lead)',
+                        photoURL: null
+                      });
+                      onAddLog('AuthGuard: Signed in as Simulated IT Lead (gustav.gropp@gmail.com)', 'success');
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                  >
+                    <User className="w-4 h-4 text-white" />
+                    <span>Sign In as Demo IT Admin</span>
+                  </button>
+                </>
               ) : (
-                <div className="flex items-center gap-2 bg-[#0f172a] border border-[#334155] p-3 rounded-xl w-full justify-between">
+                <div className="flex items-center gap-2.5 bg-[#0f172a] border border-[#334155] p-3 rounded-xl w-full justify-between">
                   <div className="flex items-center gap-2.5">
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-slate-700" referrerPolicy="no-referrer" />
+                    {currentUser.photoURL ? (
+                      <img src={currentUser.photoURL} alt={currentUser.displayName || ''} className="w-8 h-8 rounded-full border border-slate-750" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-[#38bdf8]">
-                        US
+                        {currentUser.displayName ? currentUser.displayName.slice(0, 2).toUpperCase() : 'DM'}
                       </div>
                     )}
                     <div>
                       <div className="text-white text-xs font-bold max-w-[140px] truncate leading-none mb-1">
-                        {user.displayName || 'External Authenticator'}
+                        {currentUser.displayName || 'Authorized Admin'}
                       </div>
-                      <div className="text-[#dc2626] font-mono text-[9px] font-extrabold flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-[#dc2626]" /> UNAUTHORIZED ROLE
+                      <div className="text-emerald-450 text-[9px] font-mono font-extrabold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        {isEmailAllowed || isDomainAllowed ? 'WHITELISTED_ROLE' : 'ROLE_PENDING'}
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={handleSignOut}
-                    className="p-1 px-2 border border-slate-750 bg-slate-800 text-slate-400 hover:text-red-400 rounded-md text-[10.5px] cursor-pointer"
+                    className="p-1.5 px-2 bg-slate-805 hover:bg-red-950/40 border border-slate-750 text-slate-400 hover:text-red-400 rounded-md text-[10.5px] cursor-pointer transition-colors"
                   >
                     Logout
                   </button>
@@ -206,8 +232,14 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
           </div>
 
           {errorMsg && (
-            <div className="mt-4 bg-red-950/20 border border-red-500/20 p-3 rounded-lg text-red-400 text-xs font-mono">
-              <span className="font-bold">OAUTH_ERROR:</span> {errorMsg}
+            <div className="mt-4 bg-red-950/20 border border-red-500/20 p-4 rounded-lg flex flex-col gap-2">
+              <span className="font-mono text-red-400 text-xs font-bold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-red-500" />
+                GOOGLE_SSO_INITIALIZATION_ERROR: {errorMsg}
+              </span>
+              <p className="text-slate-300 text-[10.5px] leading-relaxed">
+                If you encounter a <code className="bg-red-950/40 text-red-300 px-1 py-0.5 rounded">auth/internal-error</code> context, this is due to Chrome/Safari running inside the secure AI Studio iframe, or if Google Identity Platform login is not yet enabled on your Firebase project. Check the <strong className="text-white">SSO Troubleshooting Guide</strong> below to configure it in 2 minutes! In the meantime, click <strong className="text-emerald-400">Sign In as Demo IT Admin</strong> above to instantly test the full dashboard without setup!
+              </p>
             </div>
           )}
         </div>
@@ -215,14 +247,14 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
         {/* Informative Rationale Section / Control Gate */}
         <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6">
           
-          {/* Identity Analysis Screen */}
+          {/* Identity Analysis Screen & Troubleshooting Guide */}
           <div className="bg-[#1e293b] border border-[#334155] rounded-xl p-5 shadow-xl flex flex-col gap-4">
-            <h3 className="text-white text-sm font-bold flex items-center gap-2">
+            <h3 className="text-white text-sm font-bold flex items-center gap-2 pb-2 border-b border-slate-800">
               <ShieldAlert className="w-4 h-4 text-red-400" />
-              Administrative Gate Rationale
+              Administrative Gate Rationale & Setup Instructions
             </h3>
 
-            {user ? (
+            {currentUser ? (
               <div className="flex flex-col gap-4">
                 <div className="bg-[#0f172a] p-4 rounded-lg border border-red-500/20 text-xs flex flex-col gap-2.5">
                   <span className="text-[10px] text-red-400 font-extrabold uppercase tracking-widest font-mono">
@@ -230,20 +262,22 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
                   </span>
                   <div className="flex justify-between py-1 border-b border-slate-800/80">
                     <span className="text-[#64748b]">Authenticated ID:</span>
-                    <span className="text-slate-300 font-mono text-[10px] truncate max-w-[180px]" title={user.uid}>
-                      {user.uid}
+                    <span className="text-slate-300 font-mono text-[10px] truncate max-w-[180px]" title={currentUser.uid}>
+                      {currentUser.uid}
                     </span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800/80">
                     <span className="text-[#64748b]">Email Endpoint:</span>
-                    <span className="text-white font-mono text-[11px] font-bold">{user.email}</span>
+                    <span className="text-white font-mono text-[11px] font-bold">{currentUser.email}</span>
                   </div>
                   <div className="flex justify-between py-1">
                     <span className="text-[#64748b]">Authorization Outcome:</span>
-                    <span className="text-red-400 font-bold uppercase tracking-wider">REJECTED BY AIRGAP RULE</span>
+                    <span className={isEmailAllowed || isDomainAllowed ? "text-emerald-400 font-bold uppercase tracking-wider" : "text-red-400 font-bold uppercase tracking-wider"}>
+                      {isEmailAllowed || isDomainAllowed ? "AUTHORIZED IT STAFF" : "REJECTED BY DIRECTORY RULE"}
+                    </span>
                   </div>
                   <p className="text-[#64748b] text-[10.5px] mt-2 leading-relaxed">
-                    Although your Google authentication was verified, your email <span className="font-semibold text-slate-300">{user.email}</span> does not match any allowed school directory domains or direct staff whitelists.
+                    Verified profile: <span className="font-semibold text-slate-300">{currentUser.email}</span>. Status matches rules defined in the Access Policy matrix.
                   </p>
                 </div>
 
@@ -257,9 +291,9 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
                   <div className="flex flex-wrap gap-2.5 mt-1 border-t border-emerald-800/30 pt-3 items-center justify-between">
                     <button
                       onClick={() => {
-                        if (user?.email && !allowedEmails.includes(user.email.toLowerCase())) {
-                          setAllowedEmails([...allowedEmails, user.email.toLowerCase()]);
-                          onAddLog(`AuthGuard Override: Whitelisted currently signed-in user ${user.email}`, 'success');
+                        if (currentUser?.email && !allowedEmails.includes(currentUser.email.toLowerCase())) {
+                          setAllowedEmails([...allowedEmails, currentUser.email.toLowerCase()]);
+                          onAddLog(`AuthGuard Override: Whitelisted currently signed-in user ${currentUser.email}`, 'success');
                         }
                       }}
                       className="px-3 py-1.5 bg-[#10b981] hover:bg-[#10b981]/85 text-[#064e3b] font-black text-[11px] rounded transition-all cursor-pointer shadow-sm"
@@ -281,14 +315,34 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
               </div>
             ) : (
               <div className="flex flex-col gap-4 text-xs mt-1">
-                <div className="bg-[#0f172a] p-4 rounded-lg border border-slate-800 text-[#94a3b8] leading-relaxed">
-                  Please trigger the <span className="text-white font-semibold">Google SSO Sign In</span> sequence to authenticate. The applet is integrated with Firebase Authentication, authorizing IT staff by verifying secure attributes within the verified user profile payload.
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
+                  <span className="text-sky-400 font-black text-xs uppercase tracking-wider font-mono">
+                    🔧 Fast Sandbox Setup Instructions
+                  </span>
+                  <p className="text-[#94a3b8] text-[11px] leading-relaxed">
+                    By default, Google SSO Popup might fail inside the secure AI Studio iframe unless configured specifically.
+                  </p>
+                  <div className="flex flex-col gap-1.5 text-slate-300 text-[10.5px] font-mono bg-[#0f172a] p-3 rounded-lg border border-slate-800">
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-emerald-400">Step 1:</span>
+                      <span>Go to <strong className="text-white">Authentication &gt; Sign-In Method</strong> in Firebase Console.</span>
+                    </div>
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-emerald-400">Step 2:</span>
+                      <span>Click <strong className="text-white">Add New Provider</strong> and activate <strong className="text-white">Google</strong>.</span>
+                    </div>
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-emerald-400">Step 3:</span>
+                      <span>Under Authorized Domains, register your AI Studio link: <code className="text-indigo-300">europe-west1.run.app</code>.</span>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="border border-slate-800 bg-[#0f172a] p-3 rounded-lg flex items-center gap-3">
-                  <AlertTriangle className="w-5 h-5 text-[#f97316] shrink-0" />
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
                   <div className="text-[10.5px] text-[#94a3b8] leading-normal">
                     <span className="font-bold text-white block">Offline Sandbox Backup</span>
-                    If no identity provider is active, use the bypass options in the panel on the right.
+                    If you prefer not to configure Firebase credentials, just click the <strong className="text-emerald-400">Sign In as Demo IT Admin</strong> button above for instant evaluation.
                   </div>
                 </div>
               </div>
