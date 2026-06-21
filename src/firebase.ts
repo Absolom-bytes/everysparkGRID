@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, browserLocalPersistence, inMemoryPersistence } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -56,8 +56,11 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Initialize Firebase Auth
-export const auth = getAuth(app);
+// Initialize Firebase Auth with proper persistence to handle iframes smoothly
+const isIframeTarget = typeof window !== 'undefined' ? (window.self !== window.top) : false;
+export const auth = initializeAuth(app, {
+  persistence: isIframeTarget ? inMemoryPersistence : [browserLocalPersistence, inMemoryPersistence]
+});
 
 // Standardized operation type for security diagnostics
 export enum OperationType {

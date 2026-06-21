@@ -42,11 +42,38 @@ export default function WorkspaceTab({ onAddLog }: WorkspaceTabProps) {
     </application-restrictions>
 </device-policy>`;
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(generatedPolicy);
-    setIsCopied(true);
-    onAddLog(`Copied DPC Client configuration XML to clipboard.`, 'success');
-    setTimeout(() => setIsCopied(false), 2000);
+  const handleCopyCode = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(generatedPolicy);
+        setIsCopied(true);
+        onAddLog(`Copied DPC Client configuration XML to clipboard.`, 'success');
+        setTimeout(() => setIsCopied(false), 2000);
+      } else {
+        throw new Error("Clipboard write unavailable");
+      }
+    } catch (err) {
+      console.warn("Clipboard API failed, running fallback copy:", err);
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = generatedPolicy;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        setIsCopied(true);
+        onAddLog(`Copied configuration XML via legacy selection fallback.`, 'success');
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (fallbackErr) {
+        onAddLog(`Automatic copy blocked by sandbox browser isolation. Please click download XML to retrieve configuration.`, 'warn');
+        window.prompt("Copy XML Policy Configuration (Ctrl+C):", generatedPolicy);
+      }
+    }
   };
 
   const handleDownloadXML = () => {

@@ -1,5 +1,7 @@
+// EverySpark GRID Administrative Registry Console & Security Portal
 import { useState, useEffect } from 'react';
 import { ShieldCheck, Cpu } from 'lucide-react';
+import { auth } from './firebase';
 
 import Sidebar from './components/Sidebar';
 import RegistrationTab from './components/RegistrationTab';
@@ -21,12 +23,38 @@ import {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('device-registration');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Load from query parameters, default to false but allow interactive toggle
   const [isStudentMode, setIsStudentMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('mode') === 'student' || params.get('student') === 'true';
   });
+
+  const handleAuthStateChange = (email: string | null) => {
+    if (email) {
+      const lowerEmail = email.toLowerCase();
+      const emailDomain = lowerEmail.split('@')[1] || '';
+      
+      const adminEmails = ['gustav.gropp@gmail.com', 'it-admin@everyspark.cc', 'principal@school.edu'];
+      const adminDomains = ['school.edu', 'every-spark.edu'];
+      
+      const isEmailAdmin = adminEmails.includes(lowerEmail);
+      const isDomainAdmin = adminDomains.includes(emailDomain);
+      
+      if (isEmailAdmin || isDomainAdmin) {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+        setIsStudentMode(true);
+        setActiveTab('device-registration');
+      }
+    } else {
+      setIsAdmin(false);
+      setIsStudentMode(true);
+      setActiveTab('device-registration');
+    }
+  };
 
   // Load from LocalStorage or Fallback
   const [devices, setDevices] = useState<Device[]>(() => {
@@ -152,74 +180,94 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#020617] text-[#f8fafc] font-sans overflow-hidden">
-      {/* Top Bar Header */}
-      <header className="h-14 bg-[#1e293b] border-b border-[#334155] flex items-center px-5 justify-between select-none shrink-0">
-        <div className="flex items-center gap-3">
-          <img src="/logow.png" alt="EverySpark Logo" className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />
-          <span className="font-bold text-[15px] tracking-tight text-white flex items-center">
-            EverySpark <span className="text-[#38bdf8] ml-1">{isStudentMode ? 'PWA' : 'GRID'}</span>
-          </span>
-          <span className="text-[#475569] mx-1 font-normal font-sans text-xs">/</span>
-          <span className="text-[#94a3b8] text-[13px] font-medium font-mono">
-            {isStudentMode ? 'enroll.everyspark.cc' : 'mydevice.everyspark.cc'}
-          </span>
-        </div>
-
-        {/* Dynamic Sandbox Role Switcher - Essential for showcasing standalone design vs full console */}
-        <div className="flex items-center bg-[#0f172a] border border-[#334155] p-1 rounded-lg text-xs font-semibold select-none">
-          <button
-            onClick={() => {
-              setIsStudentMode(false);
-              setActiveTab('device-registration');
-              handleAddLog('Switched user view to [Administrative Console Mode]', 'info');
-            }}
-            className={`px-3 py-1 rounded transition-all duration-150 cursor-pointer ${
-              !isStudentMode
-                ? 'bg-[#38bdf8] text-[#0f172a] font-bold shadow'
-                : 'text-[#94a3b8] hover:text-[#f8fafc]'
-            }`}
-          >
-            Admin Console
-          </button>
-          <button
-            onClick={() => {
-              setIsStudentMode(true);
-              setActiveTab('device-registration'); // Force registration view only
-              handleAddLog('Switched user view to [Standalone Scholar PWA Mode] (Simulating QR/subdomain pathway)', 'info');
-            }}
-            className={`px-3 py-1 rounded transition-all duration-150 cursor-pointer ${
-              isStudentMode
-                ? 'bg-[#38bdf8] text-[#0f172a] font-bold shadow'
-                : 'text-[#94a3b8] hover:text-[#f8fafc]'
-            }`}
-          >
-            Scholar PWA Mode
-          </button>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 border border-emerald-600/50 bg-[#064e3b] text-[#6ee7b7] text-[10.5px] font-bold px-2.5 py-0.5 rounded uppercase tracking-wide">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
-            {isStudentMode ? 'Standalone App' : 'Full Node Online'}
+    <AuthGuard onAddLog={handleAddLog} onAuthStateChange={handleAuthStateChange}>
+      <div className="flex flex-col h-screen w-screen bg-[#020617] text-[#f8fafc] font-sans overflow-hidden">
+        {/* Top Bar Header */}
+        <header className="h-14 bg-[#1e293b] border-b border-[#334155] flex items-center px-5 justify-between select-none shrink-0">
+          <div className="flex items-center gap-3">
+            <img src="/logow.png" alt="EverySpark Logo" className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />
+            <span className="font-bold text-[15px] tracking-tight text-white flex items-center">
+              EverySpark <span className="text-[#38bdf8] ml-1">{isStudentMode ? 'PWA' : 'GRID'}</span>
+            </span>
+            <span className="text-[#475569] mx-1 font-normal font-sans text-xs">/</span>
+            <span className="text-[#94a3b8] text-[13px] font-medium font-mono">
+              {isStudentMode ? 'enroll.everyspark.cc' : 'mydevice.everyspark.cc'}
+            </span>
           </div>
-          {/* Avatar Profile representation */}
-          <div className="w-8 h-8 rounded-full bg-slate-600 border border-slate-500/80 grid place-items-center text-xs font-bold text-slate-200 shadow-inner">
-            {isStudentMode ? 'SC' : 'GG'}
+
+          {/* Dynamic Sandbox Role Switcher - Essential for showcasing standalone design vs full console */}
+          {isAdmin && (
+            <div className="flex items-center bg-[#0f172a] border border-[#334155] p-1 rounded-lg text-xs font-semibold select-none">
+              <button
+                onClick={() => {
+                  setIsStudentMode(false);
+                  setActiveTab('device-registration');
+                  handleAddLog('Switched user view to [Administrative Console Mode]', 'info');
+                }}
+                className={`px-3 py-1 rounded transition-all duration-150 cursor-pointer ${
+                  !isStudentMode
+                    ? 'bg-[#38bdf8] text-[#0f172a] font-bold shadow'
+                    : 'text-[#94a3b8] hover:text-[#f8fafc]'
+                }`}
+              >
+                Admin Console
+              </button>
+              <button
+                onClick={() => {
+                  setIsStudentMode(true);
+                  setActiveTab('device-registration'); // Force registration view only
+                  handleAddLog('Switched user view to [Standalone Scholar PWA Mode] (Simulating QR/subdomain pathway)', 'info');
+                }}
+                className={`px-3 py-1 rounded transition-all duration-150 cursor-pointer ${
+                  isStudentMode
+                    ? 'bg-[#38bdf8] text-[#0f172a] font-bold shadow'
+                    : 'text-[#94a3b8] hover:text-[#f8fafc]'
+                }`}
+              >
+                Scholar PWA Mode
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 border border-emerald-600/50 bg-[#064e3b] text-[#6ee7b7] text-[10.5px] font-bold px-2.5 py-0.5 rounded uppercase tracking-wide">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+              {isStudentMode ? 'Standalone App' : 'Full Node Online'}
+            </div>
+            
+            {/* Clickable Sign Out button */}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { signOut } = await import('firebase/auth');
+                  await signOut(auth);
+                  handleAddLog('Session completed.', 'warn');
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              className="px-2.5 py-1.5 bg-[#0f172a] hover:bg-red-950/40 border border-slate-700 hover:border-red-900/40 text-slate-350 hover:text-red-400 font-bold text-[10.5px] rounded transition cursor-pointer"
+            >
+              Sign Out
+            </button>
+
+            {/* Avatar Profile representation */}
+            <div className="w-8 h-8 rounded-full bg-slate-600 border border-slate-500/80 grid place-items-center text-xs font-bold text-slate-200 shadow-inner">
+              {isStudentMode ? 'SC' : 'GG'}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Panel Box */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Interactive Sidebar - LOCKED when accessing as standalone student PWA */}
-        {!isStudentMode && (
-          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        )}
+        {/* Main Panel Box */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Interactive Sidebar - LOCKED when accessing as standalone student PWA */}
+          {!isStudentMode && (
+            <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+          )}
 
-        {/* Dynamic Center Work Pane */}
-        <main className="flex-1 bg-[#020617] overflow-hidden">
-          <AuthGuard onAddLog={handleAddLog}>
+          {/* Dynamic Center Work Pane */}
+          <main className="flex-1 bg-[#020617] overflow-hidden">
             {isStudentMode ? (
               <RegistrationTab
                 onAddDevice={handleAddDevice}
@@ -294,25 +342,25 @@ export default function App() {
                 )}
               </>
             )}
-          </AuthGuard>
-        </main>
-      </div>
+          </main>
+        </div>
 
-      {/* Footer Bar */}
-      <footer className="h-8 bg-[#1e293b] border-t border-[#334155] flex items-center px-5 text-[11px] text-[#64748b] gap-6 select-none font-medium">
-        <div>
-          NODE: <span className="font-mono text-[#38bdf8] font-semibold">CLOUDFLARE_EDGE_ATL</span>
-        </div>
-        <div className="hidden sm:block">
-          VERSION: <span className="font-mono text-[#38bdf8] font-semibold">2.4.1-STABLE</span>
-        </div>
-        <div>
-          LATENCY: <span className="font-mono text-[#38bdf8] font-semibold">{latency}ms</span>
-        </div>
-        <div className="ml-auto font-sans font-normal">
-          © 2026 EverySpark Neighborhood GRID
-        </div>
-      </footer>
-    </div>
+        {/* Footer Bar */}
+        <footer className="h-8 bg-[#1e293b] border-t border-[#334155] flex items-center px-5 text-[11px] text-[#64748b] gap-6 select-none font-medium">
+          <div>
+            NODE: <span className="font-mono text-[#38bdf8] font-semibold">CLOUDFLARE_EDGE_ATL</span>
+          </div>
+          <div className="hidden sm:block">
+            VERSION: <span className="font-mono text-[#38bdf8] font-semibold">2.4.1-STABLE</span>
+          </div>
+          <div>
+            LATENCY: <span className="font-mono text-[#38bdf8] font-semibold">{latency}ms</span>
+          </div>
+          <div className="ml-auto font-sans font-normal">
+            © 2026 EverySpark Neighborhood GRID
+          </div>
+        </footer>
+      </div>
+    </AuthGuard>
   );
 }

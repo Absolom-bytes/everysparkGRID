@@ -28,6 +28,7 @@ export default function RegistrationTab({
   const [isScanning, setIsScanning] = useState(false);
   const [scanningStatusMsg, setScanningStatusMsg] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
+  const [copiedQr, setCopiedQr] = useState(false);
 
   // Generate random Hardware ID
   const handleAutoScanHardware = () => {
@@ -129,15 +130,43 @@ export default function RegistrationTab({
           </div>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const studentUrl = `${window.location.origin}${window.location.pathname}?mode=student`;
-              navigator.clipboard.writeText(studentUrl);
-              alert('Scholar enrollment URL copied to clipboard!');
+              try {
+                if (navigator?.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(studentUrl);
+                  setCopiedQr(true);
+                  onAddLog(`Copied Scholar enrollment URL to clipboard.`, 'success');
+                  setTimeout(() => setCopiedQr(false), 2000);
+                } else {
+                  throw new Error("Clipboard API not available or blocked in this context");
+                }
+              } catch (err) {
+                console.warn("Failed to write to clipboard:", err);
+                try {
+                  const textArea = document.createElement("textarea");
+                  textArea.value = studentUrl;
+                  textArea.style.top = "0";
+                  textArea.style.left = "0";
+                  textArea.style.position = "fixed";
+                  document.body.appendChild(textArea);
+                  textArea.focus();
+                  textArea.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(textArea);
+                  setCopiedQr(true);
+                  onAddLog(`Copied Scholar enrollment URL via execCommand fallback.`, 'success');
+                  setTimeout(() => setCopiedQr(false), 2000);
+                } catch (fallbackErr) {
+                  onAddLog(`Unable to write to clipboard dynamically (iframe sandbox block). Enrollment URL is: ${studentUrl}`, 'warn');
+                  window.prompt("Please copy enrollment URL manually:", studentUrl);
+                }
+              }
             }}
-            className="shrink-0 bg-[#0284c7] hover:bg-[#0369a1] text-white px-3 py-1.5 rounded font-semibold text-[11px] flex items-center gap-1.5 transition-colors self-stretch md:self-auto justify-center cursor-pointer"
+            className={`shrink-0 ${copiedQr ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-[#0284c7] hover:bg-[#0369a1]'} text-white px-3 py-1.5 rounded font-semibold text-[11px] flex items-center gap-1.5 transition-colors self-stretch md:self-auto justify-center cursor-pointer`}
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            Copy QR Link
+            {copiedQr ? 'Copied QR Link!' : 'Copy QR Link'}
           </button>
         </div>
       )}

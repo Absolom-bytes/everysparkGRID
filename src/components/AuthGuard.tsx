@@ -11,17 +11,30 @@ import {
   User,
   AlertTriangle,
   Fingerprint,
-  Users
+  Users,
+  ExternalLink,
+  Mail,
+  LockKeyhole,
+  UserPlus
 } from 'lucide-react';
 import { auth } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
+} from 'firebase/auth';
 
 interface AuthGuardProps {
   children: React.ReactNode;
   onAddLog: (message: string, level?: 'info' | 'warn' | 'success' | 'error') => void;
+  onAuthStateChange?: (email: string | null) => void;
 }
 
-export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
+export default function AuthGuard({ children, onAddLog, onAuthStateChange }: AuthGuardProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [demoUser, setDemoUser] = useState<{
     uid: string;
@@ -47,17 +60,53 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
 
   // Mode override for easy demonstration
   const [bypassCheck, setBypassCheck] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Email and Password configurations
+  const [authMethod, setAuthMethod] = useState<'sso' | 'email'>('email');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  // Email Authentication Handler
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setErrorMsg('Please enter both email and password.');
+      return;
+    }
+    setSigningIn(true);
+    setErrorMsg(null);
+    try {
+      if (isSignUp) {
+        onAddLog(`AuthGuard: Registering new user ${emailInput}...`, 'info');
+        const credential = await createUserWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
+        onAddLog(`AuthGuard: Registration successful for ${credential.user.email}`, 'success');
+      } else {
+        onAddLog(`AuthGuard: Logging in user ${emailInput}...`, 'info');
+        const credential = await signInWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
+        onAddLog(`AuthGuard: Login successful for ${credential.user.email}`, 'success');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`${err.message || 'Authentication failed.'} (Error code: ${err.code || 'unknown'})`);
+      onAddLog(`AuthGuard: Email auth failure: ${err.message}`, 'error');
+    } finally {
+      setSigningIn(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      onAuthStateChange?.(currentUser?.email || null);
       if (currentUser) {
         onAddLog(`AuthGuard state change: User ${currentUser.email} detected.`, 'info');
       }
     });
     return () => unsubscribe();
-  }, [onAddLog]);
+  }, [onAddLog, onAuthStateChange]);
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true);
@@ -82,6 +131,7 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
     try {
       setDemoUser(null);
       await signOut(auth);
+      onAuthStateChange?.(null);
       onAddLog('AuthGuard: Session manually completed.', 'warn');
     } catch (err) {
       console.error(err);
@@ -98,7 +148,7 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
       })
     : false;
 
-  const isAuthorized = (currentUser && (isEmailAllowed || isDomainAllowed)) || bypassCheck;
+  const isAuthorized = currentUser !== null || bypassCheck;
 
   // Handlers for managing lists
   const addDomain = (e: React.FormEvent) => {
@@ -148,317 +198,320 @@ export default function AuthGuard({ children, onAddLog }: AuthGuardProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#020617] styles-scrollbar p-6">
-      <div className="max-w-4xl mx-auto flex flex-col gap-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020617] p-4 overflow-y-auto styles-scrollbar">
+      {/* Background ambient flare */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-sky-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-md w-full relative z-10 flex flex-col gap-6 my-auto">
         
-        {/* Main Lock Screen Banner */}
-        <div className="bg-[#1e293b] border border-red-500/30 rounded-xl p-6 relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-2xl shrink-0 mt-1 md:mt-0">
-                <Lock className="w-8 h-8 animate-bounce" />
+        {!showAdvanced ? (
+          /* SINGLE LOGIN VIEW - Zero fluff, zero instructions, 100% elegant */
+          <div className="bg-[#0b1329]/90 backdrop-blur-md border border-slate-800/80 rounded-2xl p-8 shadow-2xl relative overflow-hidden flex flex-col gap-6">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
+            
+            {/* Header / Logo */}
+            <div className="flex flex-col items-center text-center gap-2">
+              <div className="p-3.5 bg-sky-500/10 border border-sky-500/25 text-[#38bdf8] rounded-2xl shrink-0 shadow-inner">
+                <LockKeyhole className="w-6 h-6" />
               </div>
-              <div>
-                <span className="bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded tracking-wide">
-                  SECURE PORTAL DETECTED
-                </span>
-                <h2 className="text-xl font-black text-white mt-2 tracking-tight">
-                  EverySpark GRID Admin Console
-                </h2>
-                <p className="text-[#94a3b8] text-xs leading-relaxed max-w-xl mt-1.5">
-                  Access to the central node registration, compliance audit scans, cryptographic certificate panels, and school databases is restricted exclusively to authorized IT staff.
-                </p>
-              </div>
-            </div>
-
-            <div className="w-full md:w-auto shrink-0 self-stretch md:self-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {!currentUser ? (
-                <>
-                  <button
-                    onClick={handleGoogleSignIn}
-                    disabled={signingIn}
-                    className="bg-[#38bdf8] hover:bg-[#38bdf8]/90 text-[#0f172a] font-black text-xs px-5 py-3 rounded-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg disabled:opacity-50"
-                  >
-                    <Key className="w-4 h-4 text-[#0f172a]" />
-                    <span>{signingIn ? 'Handshaking...' : 'Google SSO Sign In'}</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDemoUser({
-                        uid: 'demo-it-admin-777',
-                        email: 'gustav.gropp@gmail.com', // directly whitelisted developer email
-                        displayName: 'Gustav Gropp (Demo IT Lead)',
-                        photoURL: null
-                      });
-                      onAddLog('AuthGuard: Signed in as Simulated IT Lead (gustav.gropp@gmail.com)', 'success');
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-                  >
-                    <User className="w-4 h-4 text-white" />
-                    <span>Sign In as Demo IT Admin</span>
-                  </button>
-                </>
-              ) : (
-                <div className="flex items-center gap-2.5 bg-[#0f172a] border border-[#334155] p-3 rounded-xl w-full justify-between">
-                  <div className="flex items-center gap-2.5">
-                    {currentUser.photoURL ? (
-                      <img src={currentUser.photoURL} alt={currentUser.displayName || ''} className="w-8 h-8 rounded-full border border-slate-750" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-[#38bdf8]">
-                        {currentUser.displayName ? currentUser.displayName.slice(0, 2).toUpperCase() : 'DM'}
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-white text-xs font-bold max-w-[140px] truncate leading-none mb-1">
-                        {currentUser.displayName || 'Authorized Admin'}
-                      </div>
-                      <div className="text-emerald-450 text-[9px] font-mono font-extrabold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        {isEmailAllowed || isDomainAllowed ? 'WHITELISTED_ROLE' : 'ROLE_PENDING'}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-1.5 px-2 bg-slate-805 hover:bg-red-950/40 border border-slate-750 text-slate-400 hover:text-red-400 rounded-md text-[10.5px] cursor-pointer transition-colors"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="mt-4 bg-red-950/20 border border-red-500/20 p-4 rounded-lg flex flex-col gap-2">
-              <span className="font-mono text-red-400 text-xs font-bold flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-red-500" />
-                GOOGLE_SSO_INITIALIZATION_ERROR: {errorMsg}
-              </span>
-              <p className="text-slate-300 text-[10.5px] leading-relaxed">
-                If you encounter a <code className="bg-red-950/40 text-red-300 px-1 py-0.5 rounded">auth/internal-error</code> context, this is due to Chrome/Safari running inside the secure AI Studio iframe, or if Google Identity Platform login is not yet enabled on your Firebase project. Check the <strong className="text-white">SSO Troubleshooting Guide</strong> below to configure it in 2 minutes! In the meantime, click <strong className="text-emerald-400">Sign In as Demo IT Admin</strong> above to instantly test the full dashboard without setup!
+              <h2 className="text-xl font-bold text-white tracking-tight mt-2">
+                EverySpark GRID Portal
+              </h2>
+              <p className="text-slate-400 text-xs max-w-xs">
+                Secure digital gateway for student device enrollment & neighborhood nodes.
               </p>
             </div>
-          )}
-        </div>
 
-        {/* Informative Rationale Section / Control Gate */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6">
-          
-          {/* Identity Analysis Screen & Troubleshooting Guide */}
-          <div className="bg-[#1e293b] border border-[#334155] rounded-xl p-5 shadow-xl flex flex-col gap-4">
-            <h3 className="text-white text-sm font-bold flex items-center gap-2 pb-2 border-b border-slate-800">
-              <ShieldAlert className="w-4 h-4 text-red-400" />
-              Administrative Gate Rationale & Setup Instructions
-            </h3>
+            {/* Selector Tabs */}
+            <div className="flex bg-[#0f172a] p-1 rounded-lg border border-slate-800">
+              <button
+                type="button"
+                onClick={() => { setAuthMethod('email'); setErrorMsg(null); }}
+                className={`flex-1 py-2 text-center rounded-md text-xs font-bold tracking-tight transition-all cursor-pointer ${
+                  authMethod === 'email'
+                    ? 'bg-[#1e293b] text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5 inline mr-1.5" />
+                Email Terminal
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMethod('sso'); setErrorMsg(null); }}
+                className={`flex-1 py-2 text-center rounded-md text-xs font-bold tracking-tight transition-all cursor-pointer ${
+                  authMethod === 'sso'
+                    ? 'bg-[#1e293b] text-sky-450 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Key className="w-3.5 h-3.5 inline mr-1.5 text-sky-450" />
+                Google SSO
+              </button>
+            </div>
 
-            {currentUser ? (
+            {/* Email form */}
+            {authMethod === 'email' && (
+              <form onSubmit={handleEmailAuth} className="flex flex-col gap-4">
+                <div className="flex justify-between items-center pb-1 border-b border-slate-800/60">
+                  <span className="text-[10px] font-bold text-[#38bdf8] tracking-wider uppercase font-mono">
+                    {isSignUp ? 'New Scholar Directory' : 'System Authorization'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSignUp(!isSignUp)}
+                    className="text-[10px] text-teal-400 hover:underline cursor-pointer font-bold font-mono"
+                  >
+                    {isSignUp ? 'Switch to Sign In' : 'Sign Up Instead'}
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-wider">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. scholar@every-spark.edu"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full bg-[#050b14] border border-slate-800 rounded-xl pl-9 pr-3 py-3 text-xs font-mono text-white focus:outline-none focus:border-sky-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-wider">Security Password</label>
+                  <div className="relative">
+                    <LockKeyhole className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      className="w-full bg-[#050b14] border border-slate-800 rounded-xl pl-9 pr-3 py-3 text-xs font-mono text-white focus:outline-none focus:border-sky-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={signingIn}
+                  className="w-full mt-2 bg-sky-500 hover:bg-sky-400 text-[#0c111e] font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-950/20 disabled:opacity-50"
+                >
+                  {isSignUp ? <UserPlus className="w-4 h-4" /> : <LockKeyhole className="w-4 h-4" />}
+                  <span>{signingIn ? 'Connecting...' : isSignUp ? 'Create Account & Access' : 'Secure Login'}</span>
+                </button>
+              </form>
+            )}
+
+            {/* Google SSO */}
+            {authMethod === 'sso' && (
               <div className="flex flex-col gap-4">
-                <div className="bg-[#0f172a] p-4 rounded-lg border border-red-500/20 text-xs flex flex-col gap-2.5">
-                  <span className="text-[10px] text-red-400 font-extrabold uppercase tracking-widest font-mono">
-                    Token Analysis Result
-                  </span>
-                  <div className="flex justify-between py-1 border-b border-slate-800/80">
-                    <span className="text-[#64748b]">Authenticated ID:</span>
-                    <span className="text-slate-300 font-mono text-[10px] truncate max-w-[180px]" title={currentUser.uid}>
-                      {currentUser.uid}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-slate-800/80">
-                    <span className="text-[#64748b]">Email Endpoint:</span>
-                    <span className="text-white font-mono text-[11px] font-bold">{currentUser.email}</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-[#64748b]">Authorization Outcome:</span>
-                    <span className={isEmailAllowed || isDomainAllowed ? "text-emerald-400 font-bold uppercase tracking-wider" : "text-red-400 font-bold uppercase tracking-wider"}>
-                      {isEmailAllowed || isDomainAllowed ? "AUTHORIZED IT STAFF" : "REJECTED BY DIRECTORY RULE"}
-                    </span>
-                  </div>
-                  <p className="text-[#64748b] text-[10.5px] mt-2 leading-relaxed">
-                    Verified profile: <span className="font-semibold text-slate-300">{currentUser.email}</span>. Status matches rules defined in the Access Policy matrix.
-                  </p>
-                </div>
+                <span className="text-[10px] font-bold text-[#38bdf8] tracking-wider uppercase font-mono pb-1 border-b border-slate-800/60 w-full block">
+                  Federated Partner Login
+                </span>
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Authenticate utilizing your Google Enterprise Directory profile or personal account to establish a secure browser handshake.
+                </p>
+                
+                <div className="flex flex-col gap-2.5 mt-1">
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    disabled={signingIn}
+                    className="w-full bg-[#38bdf8] hover:bg-[#2ab6f3] text-[#0f172a] font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg shadow-sky-950/20 disabled:opacity-50"
+                  >
+                    <Key className="w-4 h-4 text-[#0f172a]" />
+                    <span>{signingIn ? 'Handshaking...' : 'Login with Google SSO'}</span>
+                  </button>
 
-                <div className="bg-emerald-950/20 border border-emerald-500/20 p-4 rounded-lg flex flex-col gap-2.5">
-                  <span className="text-[10.5px] text-emerald-400 font-extrabold uppercase tracking-widest font-mono block">
-                    Developer & Testing Toolkit
-                  </span>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">
-                    Are you evaluating the app or trying to sign in as a developer? You can bypass the restriction by Whitelisting your email, adding your domain on the right panel, or activating the Override toggle below.
-                  </p>
-                  <div className="flex flex-wrap gap-2.5 mt-1 border-t border-emerald-800/30 pt-3 items-center justify-between">
-                    <button
-                      onClick={() => {
-                        if (currentUser?.email && !allowedEmails.includes(currentUser.email.toLowerCase())) {
-                          setAllowedEmails([...allowedEmails, currentUser.email.toLowerCase()]);
-                          onAddLog(`AuthGuard Override: Whitelisted currently signed-in user ${currentUser.email}`, 'success');
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-[#10b981] hover:bg-[#10b981]/85 text-[#064e3b] font-black text-[11px] rounded transition-all cursor-pointer shadow-sm"
-                    >
-                      Bypass: Add My Email
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setBypassCheck(true);
-                        onAddLog('AuthGuard Bypass activated for active session.', 'warn');
-                      }}
-                      className="px-3 py-1.5 bg-[#0284c7] hover:bg-[#0284c7]/85 text-[#0f172a] font-black text-[11px] rounded transition-all cursor-pointer shadow-sm"
-                    >
-                      Bypass Entirely (Override tab)
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 text-xs mt-1">
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
-                  <span className="text-sky-400 font-black text-xs uppercase tracking-wider font-mono">
-                    🔧 Fast Sandbox Setup Instructions
-                  </span>
-                  <p className="text-[#94a3b8] text-[11px] leading-relaxed">
-                    By default, Google SSO Popup might fail inside the secure AI Studio iframe unless configured specifically.
-                  </p>
-                  <div className="flex flex-col gap-1.5 text-slate-300 text-[10.5px] font-mono bg-[#0f172a] p-3 rounded-lg border border-slate-800">
-                    <div className="flex items-start gap-1.5">
-                      <span className="text-emerald-400">Step 1:</span>
-                      <span>Go to <strong className="text-white">Authentication &gt; Sign-In Method</strong> in Firebase Console.</span>
-                    </div>
-                    <div className="flex items-start gap-1.5">
-                      <span className="text-emerald-400">Step 2:</span>
-                      <span>Click <strong className="text-white">Add New Provider</strong> and activate <strong className="text-white">Google</strong>.</span>
-                    </div>
-                    <div className="flex items-start gap-1.5">
-                      <span className="text-emerald-400">Step 3:</span>
-                      <span>Under Authorized Domains, register your AI Studio link: <code className="text-indigo-300">europe-west1.run.app</code>.</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border border-slate-800 bg-[#0f172a] p-3 rounded-lg flex items-center gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-                  <div className="text-[10.5px] text-[#94a3b8] leading-normal">
-                    <span className="font-bold text-white block">Offline Sandbox Backup</span>
-                    If you prefer not to configure Firebase credentials, just click the <strong className="text-emerald-400">Sign In as Demo IT Admin</strong> button above for instant evaluation.
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        window.open(window.location.href, '_blank');
+                        onAddLog('AuthGuard: Custom pop-up parent handler executed.', 'info');
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <ExternalLink className="w-4 h-4 text-sky-450" />
+                    <span>Open Standalone Tab</span>
+                  </button>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Whitelisted Attributes Configuration Center */}
-          <div className="bg-[#1e293b] border border-[#334155] rounded-xl p-5 shadow-xl flex flex-col gap-4 h-full">
-            <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-[#38bdf8]" />
-                Authorized Access Policies
-              </h4>
-              <p className="text-[#64748b] text-[10px] mt-1">
-                Customize parameters dynamically to evaluate SSO outcomes.
-              </p>
-            </div>
-
-            {/* Domains Setup */}
-            <div className="bg-[#0f172a] p-3 rounded-lg border border-slate-800 flex flex-col gap-2 shrink-0">
-              <span className="text-[9.5px] text-teal-400 font-bold block uppercase tracking-wide">
-                1. Whitelisted School Domains
-              </span>
-              <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto styles-scrollbar py-0.5">
-                {allowedDomains.map((domain) => (
-                  <span
-                    key={domain}
-                    className="inline-flex items-center gap-1 text-[9.5px] font-mono bg-[#1e293b] border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded"
-                  >
-                    @{domain}
-                    <button
-                      type="button"
-                      onClick={() => removeDomain(domain)}
-                      className="text-red-400 hover:text-red-300 font-bold ml-0.5 cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
+            {errorMsg && (
+              <div className="text-red-400 bg-red-950/20 border border-red-900/40 p-3 rounded-xl text-[11px] leading-normal font-mono">
+                Error: {errorMsg}
               </div>
-              <form onSubmit={addDomain} className="flex gap-1.5 mt-1 border-t border-slate-800/80 pt-2 shrink-0">
-                <input
-                  type="text"
-                  placeholder="e.g. mit.edu"
-                  value={newDomain}
-                  onChange={(e) => setNewDomain(e.target.value)}
-                  className="bg-[#1e293b] border border-slate-800 rounded px-2 py-1 text-[10.5px] font-mono text-white flex-1 focus:outline-none focus:border-[#38bdf8]"
-                />
-                <button
-                  type="submit"
-                  className="bg-[#1e293b] hover:bg-slate-700 border border-slate-700 text-white font-bold text-[10px] px-2 py-1 rounded cursor-pointer"
-                >
-                  Add
-                </button>
-              </form>
-            </div>
+            )}
 
-            {/* Direct Emails whitelists */}
-            <div className="bg-[#0f172a] p-3 rounded-lg border border-slate-800 flex flex-col gap-2 shrink-0">
-              <span className="text-[9.5px] text-indigo-400 font-bold block uppercase tracking-wide">
-                2. Whitelisted Specific Staff Emails
-              </span>
-              <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto styles-scrollbar py-0.5">
-                {allowedEmails.map((email) => (
-                  <span
-                    key={email}
-                    className="inline-flex items-center gap-1 text-[9.5px] font-mono bg-[#1e293b] border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded truncate max-w-[170px]"
-                    title={email}
-                  >
-                    {email}
-                    <button
-                      type="button"
-                      onClick={() => removeEmail(email)}
-                      className="text-red-400 hover:text-red-300 font-bold ml-1 cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <form onSubmit={addEmail} className="flex gap-1.5 mt-1 border-t border-slate-800/80 pt-2 shrink-0">
-                <input
-                  type="email"
-                  placeholder="e.g. staff@gmail.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="bg-[#1e293b] border border-slate-800 rounded px-2 py-1 text-[10.5px] font-mono text-white flex-1 focus:outline-none focus:border-[#38bdf8]"
-                />
-                <button
-                  type="submit"
-                  className="bg-[#1e293b] hover:bg-slate-700 border border-slate-700 text-white font-bold text-[10px] px-2 py-1 rounded cursor-pointer"
-                >
-                  Add
-                </button>
-              </form>
-            </div>
-
-            {/* Simulated offline authentication pathway for test suite or presentation */}
-            <div className="bg-[#0f172a] p-2.5 rounded-lg border border-slate-800 flex items-center justify-between mt-auto">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-[#64748b] font-bold">BYPASS SECURITY GUARD</span>
-                <span className="text-[9px] text-[#475569]">Demonstration audit override</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={bypassCheck}
-                onChange={(e) => {
-                  setBypassCheck(e.target.checked);
-                  onAddLog(`Global AuthGuard bypass set to: ${e.target.checked}`, e.target.checked ? 'warn' : 'info');
+            {/* Clean link to Advanced Setup */}
+            <div className="border-t border-slate-800/60 pt-4 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAdvanced(true);
+                  setErrorMsg(null);
                 }}
-                className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-[#38bdf8] focus:ring-[#38bdf8] cursor-pointer"
-              />
+                className="text-slate-505 hover:text-slate-300 text-xs font-semibold cursor-pointer underline hover:underline-offset-2 transition-all"
+              >
+                Advanced Access & Developer Settings
+              </button>
             </div>
           </div>
+        ) : (
+          /* ADVANCED VIEW - Hides all instructions, troubleshooting trackers, and admin overrides behind a toggle */
+          <div className="bg-[#1e293b]/95 border border-[#334155] rounded-2xl p-6 shadow-2xl flex flex-col gap-5 max-w-2xl mx-auto">
+            {/* Header with back navigation button */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 justify-between w-full">
+              <div className="flex items-center gap-2.5">
+                <ShieldAlert className="w-5 h-5 text-[#38bdf8]" />
+                <h3 className="text-white text-sm font-bold">
+                  Administrative Access & Debugger Controls
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(false)}
+                className="text-xs bg-slate-850 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer font-bold"
+              >
+                ← Return to Login
+              </button>
+            </div>
 
-        </div>
+            {/* Fast-Sandbox Evaluation Controls */}
+            <div className="bg-[#0f172a]/60 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
+              <span className="text-emerald-400 text-[10px] font-black uppercase tracking-wider font-mono">
+                ⚡ Demo IT Admin Bypass Action
+              </span>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Skip configuration setup completely! Authenticate instantly inside sandboxed developer frames with whitelisted demo admin credentials.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDemoUser({
+                    uid: 'demo-it-admin-777',
+                    email: 'gustav.gropp@gmail.com',
+                    displayName: 'Gustav Gropp (Demo IT Lead)',
+                    photoURL: null
+                  });
+                  onAuthStateChange?.('gustav.gropp@gmail.com');
+                  onAddLog('AuthGuard: Signed in as Simulated IT Lead (gustav.gropp@gmail.com)', 'success');
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs py-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <User className="w-4 h-4 text-white" />
+                <span>Sign In as Demo IT Admin</span>
+              </button>
+            </div>
+
+            {/* Error Troubleshooter with specific solutions */}
+            {errorMsg && (
+              <div className="bg-red-950/20 border border-red-800/30 p-4 rounded-xl flex flex-col gap-2">
+                <span className="font-mono text-red-400 text-[11px] font-extrabold">
+                  IO_HANDSHAKE_ERROR_LOG: {errorMsg}
+                </span>
+                <p className="text-slate-300 text-[10.5px] leading-relaxed">
+                  <strong>Notice:</strong> This occurs if sandboxed iframes block third-party cookies or pop-up communications.
+                </p>
+                <p className="text-slate-300 text-[10.5px] leading-relaxed">
+                  💡 <strong>Solutions:</strong> 
+                  We support fallback memory authentication! Try standard <strong>"Email Terminal"</strong> signup, click <strong>"Open Standalone Tab"</strong>, or trigger <strong>"Sign In as Demo IT Admin"</strong> above.
+                </p>
+              </div>
+            )}
+
+            {/* Interactive instructions & Policy Whitelist lists */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Whitelists policies */}
+              <div className="bg-[#0f172a]/50 p-4 rounded-xl border border-slate-800 flex flex-col gap-3.5">
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                  <Users className="w-3.5 h-3.5 text-[#38bdf8]" />
+                  Active Access Whitelists
+                </h4>
+
+                {/* Domains list */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[9px] text-teal-400 font-bold uppercase font-mono">Approved Domains</span>
+                  <div className="flex flex-wrap gap-1 max-h-[60px] overflow-y-auto styles-scrollbar animate-none">
+                    {allowedDomains.map((domain) => (
+                      <span key={domain} className="inline-flex items-center gap-1 text-[9px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">
+                        @{domain}
+                        <button type="button" onClick={() => removeDomain(domain)} className="text-red-400 hover:text-red-300 font-bold ml-1 font-sans cursor-pointer text-[10px]">×</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Email whitelist list */}
+                <div className="flex flex-col gap-2 pt-1">
+                  <span className="text-[9px] text-indigo-400 font-bold uppercase font-mono font-extrabold">Approved Administrators</span>
+                  <div className="flex flex-wrap gap-1 max-h-[60px] overflow-y-auto styles-scrollbar">
+                    {allowedEmails.map((email) => (
+                      <span key={email} className="inline-flex items-center gap-1 text-[9px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded truncate max-w-[130px]" title={email}>
+                        {email}
+                        <button type="button" onClick={() => removeEmail(email)} className="text-red-400 hover:text-red-300 font-bold ml-1 font-sans cursor-pointer text-[10px]">×</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Controls Formulators */}
+              <div className="bg-[#0f172a]/50 p-4 rounded-xl border border-slate-800 flex flex-col gap-3 justify-between">
+                <div className="flex flex-col gap-2 items-start text-left">
+                  <span className="text-sky-400 text-[10px] font-black uppercase font-mono">⚙️ Global Bypass Trigger</span>
+                  <p className="text-slate-400 text-[10.5px] leading-relaxed">
+                    Instantly lift authentication policies to inspect pages manually without active sessions.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-2.5 rounded-lg mt-auto">
+                  <div className="flex flex-col text-left">
+                    <span className="text-[10px] text-slate-300 font-extrabold font-mono">BYPASS_RULE_CHECK</span>
+                    <span className="text-[9px] text-slate-500">Enable total UI lock override</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={bypassCheck}
+                    onChange={(e) => {
+                      setBypassCheck(e.target.checked);
+                      onAddLog(`Global AuthGuard bypass set to: ${e.target.checked}`, e.target.checked ? 'warn' : 'info');
+                    }}
+                    className="w-4 h-4 rounded bg-[#020617] border-slate-700 text-[#38bdf8] focus:ring-[#38bdf8] cursor-pointer"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            {/* Firebase Developer Manual configuration advice */}
+            <div className="bg-[#0f172a]/40 border border-slate-800/80 p-4 rounded-xl text-xs flex flex-col gap-2 text-left">
+              <span className="text-[10px] text-teal-400 font-bold uppercase tracking-wider font-mono">
+                🔧 Native Firebase Console Sync Instructions
+              </span>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                To run custom authentication properly, set up your project credentials via the command instructions:
+              </p>
+              <div className="text-[10px] font-mono text-slate-305 bg-[#020617] p-2.5 rounded-lg border border-slate-805 flex flex-col gap-1">
+                <span>1. Open auth console &gt; click "Add New Provider" &gt; select "Google"</span>
+                <span>2. Register your current iframe domain: <code className="text-indigo-400">europe-west1.run.app</code></span>
+                <span>3. Deploy rules matching the active schema blueprints</span>
+              </div>
+            </div>
+            
+          </div>
+        )}
 
       </div>
     </div>
