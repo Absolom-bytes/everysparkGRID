@@ -1,0 +1,6 @@
+{
+  "name": "Device Enrollment Portal",
+  "description": "A high-density portal for managing and auditing Android SDK-compliant student devices, verifying security policies, and syncing device state.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
