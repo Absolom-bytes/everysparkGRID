@@ -9,6 +9,7 @@ import ClassroomTab from './components/ClassroomTab';
 import SyncTab from './components/SyncTab';
 import CertificatesTab from './components/CertificatesTab';
 import SettingsTab from './components/SettingsTab';
+import AuthGuard from './components/AuthGuard';
 
 import { Device, ComplianceCheck, SecurityCert, SystemLog } from './types';
 import {
@@ -218,56 +219,82 @@ export default function App() {
 
         {/* Dynamic Center Work Pane */}
         <main className="flex-1 bg-[#020617] overflow-hidden">
-          {activeTab === 'device-registration' && (
-            <RegistrationTab
-              onAddDevice={handleAddDevice}
-              logs={logs}
-              onAddLog={handleAddLog}
-              complianceChecks={complianceChecks}
-              setComplianceChecks={setComplianceChecks}
-              isStudentMode={isStudentMode}
-              syncedStudents={classroomStudents}
-            />
-          )}
+          <AuthGuard onAddLog={handleAddLog}>
+            {isStudentMode ? (
+              <RegistrationTab
+                onAddDevice={handleAddDevice}
+                logs={logs}
+                onAddLog={handleAddLog}
+                complianceChecks={complianceChecks}
+                setComplianceChecks={setComplianceChecks}
+                isStudentMode={isStudentMode}
+                syncedStudents={classroomStudents}
+              />
+            ) : (
+              <>
+                {activeTab === 'device-registration' && (
+                  <RegistrationTab
+                    onAddDevice={handleAddDevice}
+                    logs={logs}
+                    onAddLog={handleAddLog}
+                    complianceChecks={complianceChecks}
+                    setComplianceChecks={setComplianceChecks}
+                    isStudentMode={isStudentMode}
+                    syncedStudents={classroomStudents}
+                  />
+                )}
 
-          {activeTab === 'compliance-audit' && (
-            <AuditTab
-              devices={devices}
-              onDeleteDevice={handleDeleteDevice}
-              onAddLog={handleAddLog}
-              onTriggerAuditScan={handleNetworkAuditScan}
-            />
-          )}
+                {activeTab === 'compliance-audit' && (
+                  <AuditTab
+                    devices={devices}
+                    onDeleteDevice={handleDeleteDevice}
+                    onAddLog={handleAddLog}
+                    onTriggerAuditScan={handleNetworkAuditScan}
+                  />
+                )}
 
-          {activeTab === 'capture-workspace' && (
-            <WorkspaceTab onAddLog={handleAddLog} />
-          )}
+                {activeTab === 'capture-workspace' && (
+                  <WorkspaceTab onAddLog={handleAddLog} />
+                )}
 
-          {activeTab === 'classroom-sync' && (
-            <ClassroomTab
-              onAddLog={handleAddLog}
-              onSyncRosterToGrid={handleSyncRosterToGrid}
-            />
-          )}
+                {activeTab === 'classroom-sync' && (
+                  <ClassroomTab
+                    onAddLog={handleAddLog}
+                    onSyncRosterToGrid={handleSyncRosterToGrid}
+                  />
+                )}
 
-          {activeTab === 'data-sync-hub' && (
-            <SyncTab onAddLog={handleAddLog} />
-          )}
+                {activeTab === 'data-sync-hub' && (
+                  <SyncTab
+                    onAddLog={handleAddLog}
+                    devices={devices}
+                    setDevices={setDevices}
+                    complianceChecks={complianceChecks}
+                    setComplianceChecks={setComplianceChecks}
+                    certificates={certificates}
+                    setCertificates={setCertificates}
+                    logs={logs}
+                    setLogs={setLogs}
+                  />
+                )}
 
-          {activeTab === 'security-certificates' && (
-            <CertificatesTab
-              certs={certificates}
-              onAddLog={handleAddLog}
-              setCertificates={setCertificates}
-            />
-          )}
+                {activeTab === 'security-certificates' && (
+                  <CertificatesTab
+                    certs={certificates}
+                    onAddLog={handleAddLog}
+                    setCertificates={setCertificates}
+                  />
+                )}
 
-          {activeTab === 'sdk-settings' && (
-            <SettingsTab
-              onAddLog={handleAddLog}
-              onResetDatabase={handleResetDatabase}
-            />
-          )}
+                {activeTab === 'sdk-settings' && (
+                  <SettingsTab
+                    onAddLog={handleAddLog}
+                    onResetDatabase={handleResetDatabase}
+                  />
+                )}
+              </>
+            )}
+          </AuthGuard>
         </main>
       </div>
 

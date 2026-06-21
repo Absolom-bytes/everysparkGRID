@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net - Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+    function isValidDevice(data) {
+      return data.keys().hasAll(['id', 'studentId', 'hardwareId', 'department', 'os', 'osVersion', 'enrolledAt', 'complianceRating', 'status', 'userId'])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 100
+        && data.studentId is string && data.studentId.size() <= 100
+        && data.hardwareId is string && data.hardwareId.size() <= 100
+        && data.department is string && data.department.size() <= 200
+        && data.os is string && data.os.size() <= 50
+        && data.osVersion is string && data.osVersion.size() <= 50
+        && data.enrolledAt is string && data.enrolledAt.size() <= 50
+        && data.complianceRating is number && data.complianceRating >= 0 && data.complianceRating <= 6
+        && data.status is string && (data.status == 'Pass' || data.status == 'Pending' || data.status == 'Fail')
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidComplianceCheck(data) {
+      return data.keys().hasAll(['id', 'name', 'description', 'status', 'userId'])
+        && data.keys().size() == 5
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() <= 150
+        && data.description is string && data.description.size() <= 500
+        && data.status is string && (data.status == 'Pass' || data.status == 'Pending' || data.status == 'Fail' || data.status == 'Scanning')
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidSecurityCert(data) {
+      return data.keys().hasAll(['id', 'name', 'type', 'issuer', 'status', 'expiresAt', 'userId'])
+        && data.keys().size() == 7
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() <= 150
+        && data.type is string && data.type.size() <= 100
+        && data.issuer is string && data.issuer.size() <= 150
+        && data.status is string && (data.status == 'Valid' || data.status == 'Expired' || data.status == 'Revoked')
+        && data.expiresAt is string && data.expiresAt.size() <= 50
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'level', 'message', 'userId'])
+        && data.keys().size() == 5
+        && data.id is string && data.id.size() <= 100
+        && data.timestamp is string && data.timestamp.size() <= 50
+        && data.level is string && (data.level == 'info' || data.level == 'warn' || data.level == 'success' || data.level == 'error')
+        && data.message is string && data.message.size() <= 1000
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    // --- Path Mappings and Match Blocks ---
+
+    // Enforce isolated access for devices
+    match /users/{userId}/devices/{deviceId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(deviceId) && isValidDevice(incoming());
+      allow update: if isOwner(userId) && isValidId(deviceId) && isValidDevice(incoming())
+                       && incoming().id == existing().id // id immutable
+                       && incoming().userId == existing().userId; // userId immutable
+      allow delete: if isOwner(userId) && isValidId(deviceId);
+    }
+
+    // Enforce isolated access for compliance checklist
+    match /users/{userId}/complianceChecks/{checkId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(checkId) && isValidComplianceCheck(incoming());
+      allow update: if isOwner(userId) && isValidId(checkId) && isValidComplianceCheck(incoming())
+                       && incoming().id == existing().id
+                       && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(checkId);
+    }
+
+    // Enforce isolated access for security certificates
+    match /users/{userId}/certificates/{certId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(certId) && isValidSecurityCert(incoming());
+      allow update: if isOwner(userId) && isValidId(certId) && isValidSecurityCert(incoming())
+                       && incoming().id == existing().id
+                       && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(certId);
+    }
+
+    // Enforce isolated access for system logs
+    match /users/{userId}/logs/{logId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(logId) && isValidSystemLog(incoming());
+      allow update: if isOwner(userId) && isValidId(logId) && isValidSystemLog(incoming())
+                       && incoming().id == existing().id
+                       && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(logId);
+    }
+
+  }
+}

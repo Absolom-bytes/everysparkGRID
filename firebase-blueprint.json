@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "Device": {
+      "title": "Device",
+      "description": "Represents a student enrolled mobile/desktop device metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique session or device reservation ID" },
+        "studentId": { "type": "string", "description": "Student identifier linked to this device" },
+        "hardwareId": { "type": "string", "description": "Hardware MAC address or serial number" },
+        "department": { "type": "string", "description": "Grade level or course description" },
+        "os": { "type": "string", "description": "OS Category (e.g. Android, ChromeOS)" },
+        "osVersion": { "type": "string", "description": "Specific operating system version" },
+        "enrolledAt": { "type": "string", "description": "Enrollment timestamp string" },
+        "complianceRating": { "type": "number", "description": "Calculated score (e.g. 0 to 6)" },
+        "status": { "type": "string", "enum": ["Pass", "Pending", "Fail"], "description": "Evaluation status" },
+        "userId": { "type": "string", "description": "Identifier of the Admin who enrolled the device" }
+      },
+      "required": ["id", "studentId", "hardwareId", "department", "os", "osVersion", "enrolledAt", "complianceRating", "status", "userId"]
+    },
+    "ComplianceCheck": {
+      "title": "ComplianceCheck",
+      "description": "Indicates granular evaluation checklist for student sandboxing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Id of the rule check" },
+        "name": { "type": "string", "description": "Rule display name" },
+        "description": { "type": "string", "description": "Security rule requirements" },
+        "status": { "type": "string", "enum": ["Pass", "Pending", "Fail", "Scanning"], "description": "Pass/fail outcome" },
+        "userId": { "type": "string", "description": "User id of the admin configuring the policy" }
+      },
+      "required": ["id", "name", "description", "status", "userId"]
+    },
+    "SecurityCert": {
+      "title": "SecurityCert",
+      "description": "Defines device enrollment or DPC policy authority certificates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique key identifier" },
+        "name": { "type": "string", "description": "Common Name of certificate" },
+        "type": { "type": "string", "description": "Certificate type" },
+        "issuer": { "type": "string", "description": "Certificate authority issuer" },
+        "status": { "type": "string", "enum": ["Valid", "Expired", "Revoked"], "description": "Status state" },
+        "expiresAt": { "type": "string", "description": "ISO expiration timestamp" },
+        "userId": { "type": "string", "description": "User id of the administrative owner" }
+      },
+      "required": ["id", "name", "type", "issuer", "status", "expiresAt", "userId"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Activity logs synced from the EverySpark app console",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "level": { "type": "string", "enum": ["info", "warn", "success", "error"] },
+        "message": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "level", "message", "userId"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "Enrolled student devices managed by this admin user"
+    },
+    "users/{userId}/complianceChecks/{checkId}": {
+      "schema": "ComplianceCheck",
+      "description": "Custom sandbox compliance checklists managed by this admin user"
+    },
+    "users/{userId}/certificates/{certId}": {
+      "schema": "SecurityCert",
+      "description": "Cryptographic certs managed by this admin user"
+    },
+    "users/{userId}/logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Full sync-to-cloud audit trail trail logs"
+    }
+  }
+}
